@@ -1,93 +1,127 @@
 package cz.vl.bp
 
-import breeze.linalg.{DenseMatrix, norm, _}
+import breeze.linalg.{DenseMatrix, _}
+import cats.implicits._
 
 object Bp extends App {
 
   type Mat = DenseMatrix[Double]
+  type ParamContext = Map[Param, Double]
 
   trait Op {
-    def forward: Mat
+    def forward(implicit context: BpContext): Mat
 
-    def backward(dir: Mat): Unit
+    def backward(dir: Mat)(implicit context: BpContext): ParamContext
+
+    def *(p: Param): Op = Scale(this, p)
+
+    def *(that: Op): Op = Dot(this, that)
+
+    def +(that: Op): Op = Sum(this, that)
+
+    override lazy val hashCode: Int = super.hashCode
   }
 
-  case class L2Distance(expected: Mat, actual: Op) extends Op {
-    override def forward: Mat = {
-      val diff = (expected - actual.forward).flatten()
-      DenseMatrix.create(1, 1, Array(norm(diff)))
+  case class Placeholder(name: String) extends Op {
+    override def forward(implicit context: BpContext): Mat = context.inputs(this)
+
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext = Map.empty
+  }
+
+  case class Param(name: String)
+
+  case class BpContext(params: ParamContext, inputs: Map[Placeholder, Mat], step: Double)
+
+  case class FrobeniusNorm(expected: Mat, actual: Op) extends Op {
+    override def forward(implicit context: BpContext): Mat = {
+      val dist = (expected - actual.forward).data.map(math.pow(_, 2)).sum
+
+      DenseMatrix.fill(1, 1)(dist)
     }
 
-    override def backward(dir: Mat): Unit =
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext =
       actual.backward(dir)
 
-    def optimize(): Unit = {
-      //supports vectors only...
-      assert(expected.rows == 1)
-
+    def optimize(implicit context: BpContext): ParamContext = {
       val dir = (actual.forward - expected).t
       this.backward(dir)
     }
   }
 
-  case class Source(in: Mat) extends Op {
-    override def forward: Mat = in
+  case class Source(in: Placeholder) extends Op {
+    override def forward(implicit context: BpContext): Mat = context.inputs(in)
 
-    override def backward(dir: Mat): Unit = Unit
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext = Map.empty
   }
 
-  case class Scale(m: Op, var w: Double) extends Op {
-    override def forward: Mat = m.forward * w
+  case class Scale(m: Op, p: Param) extends Op {
 
-    override def backward(dir: Mat): Unit = {
-      m.backward(dir * w)
+    override def forward(implicit context: BpContext): Mat = m.forward * value
 
-      val diff = 0.3 * (dir * m.forward)
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext = {
+      val diff = context.step * (dir * m.forward)
       assert(diff.size == 1)
-      w -= diff.data(0)
+
+      val optOther = m.backward(dir * value)
+      val optP = value - diff.data(0)
+
+      optOther |+| Map(p -> optP)
     }
+
+    private def value(implicit context: BpContext) = context.params(p)
+
   }
 
   case class Sum(l: Op, r: Op) extends Op {
-    override def forward: Mat = l.forward + r.forward
+    override def forward(implicit context: BpContext): Mat = l.forward + r.forward
 
-    override def backward(dir: Mat): Unit = {
-      l.backward(dir)
-      r.backward(dir)
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext = {
+      val lOpt = l.backward(dir)
+      val rOpt = r.backward(dir)
+
+      lOpt |+| rOpt
     }
   }
 
   case class Dot(l: Op, r: Op) extends Op {
-    override def forward: Mat = l.forward.t * r.forward
+    override def forward(implicit context: BpContext): Mat = l.forward.t * r.forward
 
-    override def backward(dir: Mat): Unit = {
-      l.backward(dir * r.forward.t)
-      r.backward(dir * l.forward.t)
+    override def backward(dir: Mat)(implicit context: BpContext): ParamContext = {
+      val lOpt = l.backward(dir * r.forward.t)
+      val rOpt = r.backward(dir * l.forward.t)
+
+      lOpt |+| rOpt
     }
   }
 
-  def mat(d: Double*): DenseMatrix[Double] = DenseMatrix.create(d.length, 1, d.toArray)
+  def vect(d: Double*): DenseMatrix[Double] = DenseMatrix.create(d.length, 1, d.toArray)
 
-  val s1 = Source(mat(1, 2))
-  val s2 = Source(mat(2, 3))
-  val s3 = Source(mat(-1, 1))
+  val s1 = Placeholder("i1")
+  val s2 = Placeholder("i2")
+  val s3 = Placeholder("i3")
 
-  val s1Scaled = Scale(s1, 1)
-  val s2Scaled = Scale(s2, -1)
-  val s3Scaled = Scale(s3, 1)
-  val s12Sum = Sum(s1Scaled, s2Scaled)
-  val s123Dot = Dot(s12Sum, s3Scaled)
+  val w1 = Param("w1")
+  val w2 = Param("w2")
+  val w3 = Param("w3")
 
-  println(s"s1:\n${s1Scaled.forward}\n")
-  println(s"s2:\n${s2Scaled.forward}\n")
-  println(s"s3:\n${s3Scaled.forward}\n")
-  println(s"s12:\n${s12Sum.forward}\n")
-  println(s"s123:\n${s123Dot.forward}\n")
+  val expression = (s1 * w1 + s2 * w2) * (s3 * w3)
 
-  for (i <- 0 to 30) {
-    L2Distance(mat(0.5), s123Dot).optimize()
-    println(s123Dot.forward)
-  }
+  val initialParams = Map(w1 -> 1.0, w2 -> -1.0, w3 -> 1.0)
+  val inputValues = Map(
+    s1 -> vect(1, 2),
+    s2 -> vect(2, 3),
+    s3 -> vect(-1, 1)
+  )
+  val expectedOutput = vect(0.5)
+
+  (0 to 20)
+    .map(_ => (inputValues, expectedOutput))
+    .foldLeft(initialParams) {
+      case (params, (inputs, output)) =>
+        val context = BpContext(params, inputs, step = 0.3)
+        println(expression.forward(context))
+        FrobeniusNorm(expectedOutput, expression).optimize(context)
+    }
 
 }
 

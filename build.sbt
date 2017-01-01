@@ -9,8 +9,9 @@ libraryDependencies  ++= Seq(
   "org.scalanlp" %% "breeze-natives" % "0.12",
   "org.scalanlp" %% "breeze-viz" % "0.12",
   "org.typelevel" %% "cats" % "0.8.1",
-  "com.typesafe.play" %% "play-json" % "2.5.10"
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.8.4"
 )
 
 
 resolvers += "Sonatype Releases" at "https://oss.sonatype.org/content/repositories/releases/"
+resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"

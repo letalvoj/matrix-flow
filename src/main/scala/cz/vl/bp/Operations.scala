@@ -5,15 +5,16 @@ import cats.implicits._
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 
 object Op {
+
   type Mat = DenseMatrix[Double]
   type ParamContext = Map[Param, Double]
 
   case class Param(name: String)
   case class BpContext(params: ParamContext, inputs: Map[Placeholder, Mat], stepSize: Double)
 
-  implicit def matConst(mat: Mat) = new Const(mat)
+  implicit def matConst(mat: Mat): Const = Const(mat)
 
-  def l2Distance(expected: Mat, actual: Op): FrobeniusNorm = new FrobeniusNorm(actual - expected)
+  def l2Distance(expected: Mat, actual: Op): FrobeniusNorm = FrobeniusNorm(actual - expected)
 
 }
 
@@ -26,13 +27,13 @@ trait Op {
 
   def backward(dir: Mat)(implicit context: BpContext): ParamContext
 
-  def *(p: Param): Op = new Scale(this, p)
+  def *(p: Param): Op = Scale(this, p)
 
-  def *(that: Op): Op = new Dot(this, that)
+  def *(that: Op): Op = Dot(this, that)
 
-  def +(that: Op): Op = new Plus(this, that)
+  def +(that: Op): Op = Plus(this, that)
 
-  def -(that: Op): Op = new Minus(this, that)
+  def -(that: Op): Op = Minus(this, that)
 
   @transient override lazy val hashCode: Int = super.hashCode
 
@@ -40,7 +41,7 @@ trait Op {
 
 }
 
-class Const(val mat: Mat) extends Op {
+case class Const(mat: Mat) extends Op {
 
   def forward(implicit context: BpContext): Mat =
     mat
@@ -50,7 +51,7 @@ class Const(val mat: Mat) extends Op {
 
 }
 
-case class Placeholder(val name: String) extends Op {
+case class Placeholder(name: String) extends Op {
 
   def forward(implicit context: BpContext): Mat =
     context.inputs(this)
@@ -61,7 +62,7 @@ case class Placeholder(val name: String) extends Op {
 }
 
 
-class FrobeniusNorm(val op: Op) extends Op {
+case class FrobeniusNorm(op: Op) extends Op {
   def forward(implicit context: BpContext): Mat = {
     val dist = op.forward.data.map(math.pow(_, 2)).sum * 2
 
@@ -77,7 +78,7 @@ class FrobeniusNorm(val op: Op) extends Op {
   }
 }
 
-case class Scale(val m: Op, val p: Param) extends Op {
+case class Scale(m: Op, p: Param) extends Op {
 
   def forward(implicit context: BpContext): Mat =
     m.forward * value
@@ -96,7 +97,7 @@ case class Scale(val m: Op, val p: Param) extends Op {
 
 }
 
-class Plus(val l: Op, val r: Op) extends Op {
+case class Plus(l: Op, r: Op) extends Op {
   def forward(implicit context: BpContext): Mat =
     l.forward + r.forward
 
@@ -108,7 +109,7 @@ class Plus(val l: Op, val r: Op) extends Op {
   }
 }
 
-class Minus(val l: Op, val r: Op) extends Op {
+case class Minus(l: Op, r: Op) extends Op {
   def forward(implicit context: BpContext): Mat =
     l.forward - r.forward
 
@@ -120,7 +121,7 @@ class Minus(val l: Op, val r: Op) extends Op {
   }
 }
 
-class Dot(val l: Op, val r: Op) extends Op {
+case class Dot(l: Op, r: Op) extends Op {
   def forward(implicit context: BpContext): Mat =
     l.forward.t * r.forward
 

@@ -49,7 +49,7 @@ object Backprop {
   def runEpoch(params: ParamContext, data: Seq[(Map[Placeholder, Mat], Double)]): ParamContext = {
     val (paramFinal, err) = data.foldLeft((params, 0.0)) {
       case ((paramsBefore, errBefore), (inputs, output)) =>
-        implicit val context = BpContext(paramsBefore, inputs, stepSize = 0.000005)
+        implicit val context = BpContext(paramsBefore, inputs, stepSize = 0.00002)
         val distanceFunction = l2Distance(vect(output), expression)
 
         val outputActual = expression.forward.data(0)
@@ -58,12 +58,12 @@ object Backprop {
         val paramsAfter = distanceFunction.optimize
         val outputAfter = expression.forward(context.copy(params = paramsAfter)).data(0)
 
-        println(f"$distanceActual%.2f - e:$output%.2f a:$outputActual%.2f o:$outputAfter%.2f")
+        println(f"$distanceActual%.2f - e:$output%10.2f a:$outputActual%10.2f o:$outputAfter%10.2f")
 
         (paramsAfter, errBefore + distanceActual)
     }
 
-    println(s"AVERAGE ERROR --------- ${err / data.length}")
+    println(f"AVERAGE ERROR --------- ${err / data.length}%8.8f")
     println(s"PARAMS --------- $paramFinal")
 
     paramFinal

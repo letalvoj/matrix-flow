@@ -12,10 +12,6 @@ object Op {
   case class Param(name: String)
   case class BpContext(params: ParamContext, inputs: Map[Placeholder, Mat], stepSize: Double)
 
-  implicit def matConst(mat: Mat): Const = Const(mat)
-
-  def l2Distance(expected: Mat, actual: Op): FrobeniusNorm = FrobeniusNorm(actual - expected)
-
 }
 
 import cz.vl.bp.Op._
@@ -36,8 +32,6 @@ trait Op {
   def -(that: Op): Op = Minus(this, that)
 
   @transient override lazy val hashCode: Int = super.hashCode
-
-  @transient override lazy val toString: String = super.toString
 
 }
 
@@ -61,6 +55,10 @@ case class Placeholder(name: String) extends Op {
 
 }
 
+
+object L2Distance {
+  def apply(expected: Mat, actual: Op): FrobeniusNorm = FrobeniusNorm(actual - Const(expected))
+}
 
 case class FrobeniusNorm(op: Op) extends Op {
   def forward(implicit context: BpContext): Mat = {

@@ -4,6 +4,13 @@ This is a dumb simple naive implementation of _TensorFlow_ like framework for ma
 I implemented it as a tiny toy project to learn how a back-propagation work.
 I tried to keep the code as `Scala`-ish as possible.
 
+## Workshop TODOs
+
+ * [ ] caching forward pass
+ * [ ] parallelization (SDG)
+ * [ ] probabilistic programming ([inspiration](http://edwardlib.org/tutorials/supervised-regression))
+
+
 ## Possible improvements
 
 Those are just two must have ideas (for me to not to forget):

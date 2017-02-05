@@ -50,7 +50,7 @@ object Backprop {
     val (paramFinal, err) = data.foldLeft((params, 0.0)) {
       case ((paramsBefore, errBefore), (inputs, output)) =>
         implicit val context = BpContext(paramsBefore, inputs, stepSize = 0.00002)
-        val distanceFunction = l2Distance(vect(output), expression)
+        val distanceFunction = L2Distance(vect(output), expression)
 
         val outputActual = expression.forward.data(0)
         val distanceActual = distanceFunction.forward.data(0)
